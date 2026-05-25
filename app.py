@@ -1,0 +1,265 @@
+import torch
+import gradio as gr
+import plotly.graph_objects as go
+from models.singleton import ModelManager
+from analysis.metrics import extract_metrics
+
+manager = ModelManager()
+
+
+def plot_cosine_similarity(payload: dict) -> go.Figure:
+    layers = list(payload.keys())
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=layers, y=[payload[l]["cosine_sim"] for l in layers],
+        mode="lines+markers", name="Cosine Similarity"
+    ))
+    fig.update_layout(
+        title="Cosine Similarity per Layer",
+        xaxis_title="Layer", yaxis_title="Cosine Similarity",
+        yaxis_range=[-1, 1], height=300, margin=dict(l=40, r=20, t=40, b=30),
+    )
+    return fig
+
+
+def plot_mse(payload: dict) -> go.Figure:
+    layers = list(payload.keys())
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=layers, y=[payload[l]["mse"] for l in layers],
+        name="MSE"
+    ))
+    fig.update_layout(
+        title="Mean Squared Error per Layer",
+        xaxis_title="Layer", yaxis_title="MSE",
+        height=300, margin=dict(l=40, r=20, t=40, b=30),
+    )
+    return fig
+
+
+def plot_velocity(payload: dict) -> go.Figure:
+    layers = list(payload.keys())
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=layers, y=[payload[l]["model_a_velocity"] for l in layers],
+        mode="lines+markers", name="Model A Velocity"
+    ))
+    fig.add_trace(go.Scatter(
+        x=layers, y=[payload[l]["model_b_velocity"] for l in layers],
+        mode="lines+markers", name="Model B Velocity"
+    ))
+    fig.update_layout(
+        title="Layer Velocity (MSE between consecutive layers)",
+        xaxis_title="Layer", yaxis_title="Velocity",
+        height=300, margin=dict(l=40, r=20, t=40, b=30),
+    )
+    return fig
+
+
+def plot_l2_magnitudes(payload: dict) -> go.Figure:
+    layers = list(payload.keys())
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=layers, y=[payload[l]["model_a_l2"] for l in layers],
+        mode="lines+markers", name="Model A L2"
+    ))
+    fig.add_trace(go.Scatter(
+        x=layers, y=[payload[l]["model_b_l2"] for l in layers],
+        mode="lines+markers", name="Model B L2"
+    ))
+    fig.update_layout(
+        title="Mean L2 Magnitude per Layer",
+        xaxis_title="Layer", yaxis_title="L2 Norm",
+        height=300, margin=dict(l=40, r=20, t=40, b=30),
+    )
+    return fig
+
+
+def plot_sparsity(payload: dict) -> go.Figure:
+    layers = list(payload.keys())
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=layers, y=[payload[l]["model_a_sparsity"] for l in layers],
+        mode="lines+markers", name="Model A Sparsity"
+    ))
+    fig.add_trace(go.Scatter(
+        x=layers, y=[payload[l]["model_b_sparsity"] for l in layers],
+        mode="lines+markers", name="Model B Sparsity"
+    ))
+    fig.update_layout(
+        title="Activation Sparsity (Hoyer) per Layer",
+        xaxis_title="Layer", yaxis_title="Sparsity",
+        height=300, margin=dict(l=40, r=20, t=40, b=30),
+    )
+    return fig
+
+
+def run_pipeline(
+    model_a_path: str,
+    model_b_path: str,
+    adapter_path: str,
+    quantization: str,
+    allow_mismatch: bool,
+    prompt: str,
+):
+    try:
+        plan = manager.load_if_needed(
+            model_a_path=model_a_path,
+            model_b_path=model_b_path or None,
+            adapter_path=adapter_path or None,
+            quantization=quantization,
+            allow_mismatch=allow_mismatch,
+        )
+    except ValueError as e:
+        raise gr.Error(str(e))
+
+    if not prompt.strip():
+        raise gr.Error("Prompt cannot be empty.")
+
+    inputs_a = plan.tokenizer_a(prompt, return_tensors="pt").to(
+        plan.model_a.device
+    )
+    num_tokens_a = inputs_a["input_ids"].size(1)
+
+    try:
+        if plan.mode == "single_model_adapter_swap":
+            with torch.no_grad():
+                with plan.model_a.disable_adapter():
+                    outputs_base = plan.model_a(**inputs_a, output_hidden_states=True)
+            with torch.no_grad():
+                outputs_adapter = plan.model_a(**inputs_a, output_hidden_states=True)
+            hidden_a = outputs_base.hidden_states
+            hidden_b = outputs_adapter.hidden_states
+            is_matched = True
+            hidden_dim_b = plan.model_a.config.hidden_size
+            del outputs_base, outputs_adapter
+        else:
+            inputs_b = plan.tokenizer_b(prompt, return_tensors="pt").to(
+                plan.model_b.device
+            )
+            num_tokens_b = inputs_b["input_ids"].size(1)
+
+            with torch.no_grad():
+                outputs_a = plan.model_a(**inputs_a, output_hidden_states=True)
+            with torch.no_grad():
+                outputs_b = plan.model_b(**inputs_b, output_hidden_states=True)
+
+            hidden_a = outputs_a.hidden_states
+            hidden_b = outputs_b.hidden_states
+
+            has_dim_mismatch = any(
+                "Hidden Dimension Mismatch" in w for w in plan.warnings
+            )
+            is_matched = not has_dim_mismatch and num_tokens_a == num_tokens_b
+            hidden_dim_b = plan.model_b.config.hidden_size
+            del outputs_a, outputs_b
+
+    except RuntimeError as e:
+        raise gr.Error(f"Forward pass failed (OOM or CUDA error): {e}")
+
+    hidden_dim_a = plan.model_a.config.hidden_size
+
+    payload = extract_metrics(
+        hidden_a, hidden_b, is_matched, hidden_dim_a, hidden_dim_b,
+    )
+    del hidden_a, hidden_b
+
+    cosine_fig = plot_cosine_similarity(payload) if is_matched else None
+    mse_fig = plot_mse(payload) if is_matched else None
+    velocity_fig = plot_velocity(payload)
+    l2_fig = plot_l2_magnitudes(payload)
+    sparsity_fig = plot_sparsity(payload)
+
+    warning_text = (
+        "⚠️ **Dimension Mismatch Detected:** "
+        "Direct vector comparison disabled. Showing structural metrics only."
+        if not is_matched
+        else ""
+    )
+
+    return [
+        cosine_fig,
+        mse_fig,
+        velocity_fig,
+        l2_fig,
+        sparsity_fig,
+        gr.update(visible=not is_matched, value=warning_text),
+        gr.update(visible=is_matched),
+    ]
+
+
+with gr.Blocks(
+    title="LLM Activation Analyzer",
+    theme=gr.themes.Soft(),
+    concurrency_limit=1,
+) as demo:
+    gr.Markdown("# LLM Activation Analyzer")
+
+    with gr.Row():
+        with gr.Column(scale=1):
+            gr.Markdown("### Configuration")
+            model_a_path = gr.Textbox(
+                label="Model A Path",
+                placeholder="e.g. meta-llama/Meta-Llama-3-8B",
+            )
+            model_b_path = gr.Textbox(
+                label="Model B Path (or leave empty for LoRA mode)",
+                placeholder="e.g. meta-llama/Meta-Llama-3-8B-Instruct",
+            )
+            adapter_path = gr.Textbox(
+                label="LoRA Adapter Path",
+                placeholder="Path to LoRA adapter (optional)",
+            )
+            quantization = gr.Dropdown(
+                label="Quantization",
+                choices=["4-bit", "8-bit", "None"],
+                value="4-bit",
+            )
+            allow_mismatch = gr.Checkbox(
+                label="Authorize Mismatched Models",
+                value=False,
+            )
+            prompt = gr.Textbox(
+                label="Prompt",
+                placeholder="Enter your prompt here...",
+                lines=4,
+            )
+            run_btn = gr.Button("Run Analysis", variant="primary")
+
+        with gr.Column(scale=2):
+            mismatch_banner = gr.Markdown(visible=False)
+
+            with gr.Tabs():
+                with gr.Tab("Matched Vectors") as matched_tab:
+                    with gr.Column() as matched_column:
+                        cosine_plot = gr.Plot(label="Cosine Similarity")
+                        mse_plot = gr.Plot(label="Mean Squared Error")
+
+                with gr.Tab("Structural Integrity") as structural_tab:
+                    velocity_plot = gr.Plot(label="Layer Velocity")
+                    l2_plot = gr.Plot(label="L2 Magnitudes")
+                    sparsity_plot = gr.Plot(label="Activation Sparsity")
+
+    run_btn.click(
+        fn=run_pipeline,
+        inputs=[
+            model_a_path,
+            model_b_path,
+            adapter_path,
+            quantization,
+            allow_mismatch,
+            prompt,
+        ],
+        outputs=[
+            cosine_plot,
+            mse_plot,
+            velocity_plot,
+            l2_plot,
+            sparsity_plot,
+            mismatch_banner,
+            matched_column,
+        ],
+    )
+
+if __name__ == "__main__":
+    demo.launch()
