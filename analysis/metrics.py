@@ -36,6 +36,9 @@ def extract_metrics(
 
     payload: dict[str, dict] = {}
 
+    if is_matched:
+        per_token_cosine: list[list[float]] = []
+
     for i in range(n_layers):
         ha = hidden_a[i]
         hb = hidden_b[i]
@@ -50,10 +53,10 @@ def extract_metrics(
         }
 
         if is_matched:
-            entry["cosine_sim"] = (
-                F.cosine_similarity(ha, hb, dim=-1).mean().item()
-            )
+            cos_per_token = F.cosine_similarity(ha, hb, dim=-1)
+            entry["cosine_sim"] = cos_per_token.mean().item()
             entry["mse"] = F.mse_loss(ha, hb).item()
+            per_token_cosine.append(cos_per_token.squeeze(0).tolist())
         else:
             ha_lt = ha[:, -1, :]
             hb_lt = hb[:, -1, :]
@@ -61,5 +64,8 @@ def extract_metrics(
             entry["model_b_last_l2"] = _compute_l2(hb_lt)
 
         payload[f"layer_{i}"] = entry
+
+    if is_matched:
+        payload["_per_token_cosine"] = per_token_cosine
 
     return payload

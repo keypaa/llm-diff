@@ -7,8 +7,12 @@ from analysis.metrics import extract_metrics
 manager = ModelManager()
 
 
+def _layer_keys(payload: dict) -> list[str]:
+    return [k for k in payload if not k.startswith("_")]
+
+
 def plot_cosine_similarity(payload: dict) -> go.Figure:
-    layers = list(payload.keys())
+    layers = _layer_keys(payload)
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=layers, y=[payload[layer]["cosine_sim"] for layer in layers],
@@ -23,7 +27,7 @@ def plot_cosine_similarity(payload: dict) -> go.Figure:
 
 
 def plot_mse(payload: dict) -> go.Figure:
-    layers = list(payload.keys())
+    layers = _layer_keys(payload)
     fig = go.Figure()
     fig.add_trace(go.Bar(
         x=layers, y=[payload[layer]["mse"] for layer in layers],
@@ -38,7 +42,7 @@ def plot_mse(payload: dict) -> go.Figure:
 
 
 def plot_velocity(payload: dict) -> go.Figure:
-    layers = list(payload.keys())
+    layers = _layer_keys(payload)
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=layers, y=[payload[layer]["model_a_velocity"] for layer in layers],
@@ -57,7 +61,7 @@ def plot_velocity(payload: dict) -> go.Figure:
 
 
 def plot_l2_magnitudes(payload: dict) -> go.Figure:
-    layers = list(payload.keys())
+    layers = _layer_keys(payload)
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=layers, y=[payload[layer]["model_a_l2"] for layer in layers],
@@ -76,7 +80,7 @@ def plot_l2_magnitudes(payload: dict) -> go.Figure:
 
 
 def plot_sparsity(payload: dict) -> go.Figure:
-    layers = list(payload.keys())
+    layers = _layer_keys(payload)
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=layers, y=[payload[layer]["model_a_sparsity"] for layer in layers],
@@ -90,6 +94,34 @@ def plot_sparsity(payload: dict) -> go.Figure:
         title="Activation Sparsity (Hoyer) per Layer",
         xaxis_title="Layer", yaxis_title="Sparsity",
         height=300, margin=dict(l=40, r=20, t=40, b=30),
+    )
+    return fig
+
+
+def plot_token_heatmap(payload: dict, tokens: list[str]) -> go.Figure | None:
+    if "_per_token_cosine" not in payload:
+        return None
+    matrix = payload["_per_token_cosine"]
+    n_layers = len(matrix)
+    n_tokens = len(matrix[0]) if matrix else 0
+    layer_labels = [str(i) for i in range(n_layers)]
+    dtick = max(1, n_tokens // 20)
+    fig = go.Figure(data=go.Heatmap(
+        z=matrix,
+        x=tokens,
+        y=layer_labels,
+        colorscale="RdBu_r",
+        zmin=-1,
+        zmax=1,
+        hovertemplate="Token: %{x}<br>Layer: %{y}<br>Cosine: %{z:.4f}<extra></extra>",
+    ))
+    fig.update_layout(
+        title="Per-Token Cosine Similarity Heatmap",
+        xaxis_title="Token Position",
+        xaxis=dict(tickmode="linear", tick0=0, dtick=dtick),
+        yaxis_title="Layer",
+        height=max(300, n_layers * 12),
+        margin=dict(l=40, r=20, t=40, b=80),
     )
     return fig
 
@@ -119,6 +151,7 @@ def run_pipeline(
     inputs_a = plan.tokenizer_a(prompt, return_tensors="pt").to(
         plan.model_a.device
     )
+    tokens_a = plan.tokenizer_a.convert_ids_to_tokens(inputs_a["input_ids"][0])
     num_tokens_a = inputs_a["input_ids"].size(1)
 
     try:
@@ -169,6 +202,7 @@ def run_pipeline(
     velocity_fig = plot_velocity(payload)
     l2_fig = plot_l2_magnitudes(payload)
     sparsity_fig = plot_sparsity(payload)
+    heatmap_fig = plot_token_heatmap(payload, tokens_a) if is_matched else None
 
     warning_text = (
         "⚠️ **Dimension Mismatch Detected:** "
@@ -183,7 +217,9 @@ def run_pipeline(
         velocity_fig,
         l2_fig,
         sparsity_fig,
+        heatmap_fig,
         gr.update(visible=not is_matched, value=warning_text),
+        gr.update(visible=is_matched),
         gr.update(visible=is_matched),
     ]
 
@@ -233,6 +269,10 @@ with gr.Blocks(
                         cosine_plot = gr.Plot(label="Cosine Similarity")
                         mse_plot = gr.Plot(label="Mean Squared Error")
 
+                with gr.Tab("Token Heatmap") as heatmap_tab:
+                    with gr.Column() as heatmap_column:
+                        heatmap_plot = gr.Plot(label="Token Activation Heatmap")
+
                 with gr.Tab("Structural Integrity") as structural_tab:
                     velocity_plot = gr.Plot(label="Layer Velocity")
                     l2_plot = gr.Plot(label="L2 Magnitudes")
@@ -254,8 +294,10 @@ with gr.Blocks(
             velocity_plot,
             l2_plot,
             sparsity_plot,
+            heatmap_plot,
             mismatch_banner,
             matched_column,
+            heatmap_column,
         ],
     )
 

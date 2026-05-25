@@ -91,6 +91,8 @@ def test_extract_metrics_payload_structure():
     payload = extract_metrics(hidden_a, hidden_b, is_matched=True, hidden_dim_a=4, hidden_dim_b=4)
 
     for key in payload:
+        if key.startswith("_"):
+            continue
         entry = payload[key]
         assert "cosine_sim" in entry
         assert "mse" in entry
@@ -101,4 +103,7 @@ def test_extract_metrics_payload_structure():
         assert "model_a_sparsity" in entry
         assert "model_b_sparsity" in entry
 
-    assert len(payload) == 2
+    assert "_per_token_cosine" in payload
+    assert len(payload["_per_token_cosine"]) == 2
+    assert len(payload["_per_token_cosine"][0]) == 3
+    assert len(payload) == 3
