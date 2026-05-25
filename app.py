@@ -260,7 +260,5 @@ with gr.Blocks(
     )
 
 if __name__ == "__main__":
-    demo.launch(
-        concurrency_limit=1,
-        theme=gr.themes.Soft(),
-    )
+    demo.queue(default_concurrency_limit=1)
+    demo.launch(theme=gr.themes.Soft())
