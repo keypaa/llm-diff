@@ -190,8 +190,6 @@ def run_pipeline(
 
 with gr.Blocks(
     title="LLM Activation Analyzer",
-    theme=gr.themes.Soft(),
-    concurrency_limit=1,
 ) as demo:
     gr.Markdown("# LLM Activation Analyzer")
 
@@ -262,4 +260,7 @@ with gr.Blocks(
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(
+        concurrency_limit=1,
+        theme=gr.themes.Soft(),
+    )
