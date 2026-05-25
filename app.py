@@ -11,7 +11,7 @@ def plot_cosine_similarity(payload: dict) -> go.Figure:
     layers = list(payload.keys())
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=layers, y=[payload[l]["cosine_sim"] for l in layers],
+        x=layers, y=[payload[layer]["cosine_sim"] for layer in layers],
         mode="lines+markers", name="Cosine Similarity"
     ))
     fig.update_layout(
@@ -26,7 +26,7 @@ def plot_mse(payload: dict) -> go.Figure:
     layers = list(payload.keys())
     fig = go.Figure()
     fig.add_trace(go.Bar(
-        x=layers, y=[payload[l]["mse"] for l in layers],
+        x=layers, y=[payload[layer]["mse"] for layer in layers],
         name="MSE"
     ))
     fig.update_layout(
@@ -41,11 +41,11 @@ def plot_velocity(payload: dict) -> go.Figure:
     layers = list(payload.keys())
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=layers, y=[payload[l]["model_a_velocity"] for l in layers],
+        x=layers, y=[payload[layer]["model_a_velocity"] for layer in layers],
         mode="lines+markers", name="Model A Velocity"
     ))
     fig.add_trace(go.Scatter(
-        x=layers, y=[payload[l]["model_b_velocity"] for l in layers],
+        x=layers, y=[payload[layer]["model_b_velocity"] for layer in layers],
         mode="lines+markers", name="Model B Velocity"
     ))
     fig.update_layout(
@@ -60,11 +60,11 @@ def plot_l2_magnitudes(payload: dict) -> go.Figure:
     layers = list(payload.keys())
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=layers, y=[payload[l]["model_a_l2"] for l in layers],
+        x=layers, y=[payload[layer]["model_a_l2"] for layer in layers],
         mode="lines+markers", name="Model A L2"
     ))
     fig.add_trace(go.Scatter(
-        x=layers, y=[payload[l]["model_b_l2"] for l in layers],
+        x=layers, y=[payload[layer]["model_b_l2"] for layer in layers],
         mode="lines+markers", name="Model B L2"
     ))
     fig.update_layout(
@@ -79,11 +79,11 @@ def plot_sparsity(payload: dict) -> go.Figure:
     layers = list(payload.keys())
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=layers, y=[payload[l]["model_a_sparsity"] for l in layers],
+        x=layers, y=[payload[layer]["model_a_sparsity"] for layer in layers],
         mode="lines+markers", name="Model A Sparsity"
     ))
     fig.add_trace(go.Scatter(
-        x=layers, y=[payload[l]["model_b_sparsity"] for l in layers],
+        x=layers, y=[payload[layer]["model_b_sparsity"] for layer in layers],
         mode="lines+markers", name="Model B Sparsity"
     ))
     fig.update_layout(
