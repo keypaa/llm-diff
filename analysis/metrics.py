@@ -37,7 +37,7 @@ def _compute_logit_lens(
         values, indices = torch.topk(probs, top_k, dim=-1)
         layer_tokens: list[dict] = []
         for idx, val in zip(indices.squeeze(0).tolist(), values.squeeze(0).tolist()):
-            token_str = tokenizer.decode(idx)
+            token_str = tokenizer.convert_ids_to_tokens(idx)
             layer_tokens.append({"token": token_str, "prob": round(val, 4)})
         result.append(layer_tokens)
     return result

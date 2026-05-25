@@ -139,7 +139,7 @@ def build_logit_lens_table(payload: dict) -> list[list[str]]:
         if entries is None or idx >= len(entries):
             return "N/A"
         return " | ".join(
-            f"{t['token']}({t['prob']:.0%})" for t in entries[idx]
+            f"{t['token']}({t['prob']:.1%})" for t in entries[idx]
         )
 
     rows: list[list[str]] = []

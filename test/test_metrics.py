@@ -110,7 +110,7 @@ def test_extract_metrics_payload_structure():
 
 
 class _DummyTokenizer:
-    def decode(self, ids):
+    def convert_ids_to_tokens(self, ids):
         return f"tok_{ids}"
 
 
