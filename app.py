@@ -127,57 +127,29 @@ def plot_token_heatmap(payload: dict, tokens: list[str]) -> go.Figure | None:
     return fig
 
 
-def plot_logit_lens(payload: dict) -> go.Figure | None:
+def build_logit_lens_table(payload: dict) -> list[list[str]]:
     if "_logit_lens_a" not in payload and "_logit_lens_b" not in payload:
-        return None
+        return [["No LM head available", "", ""]]
+
     entries_a = payload.get("_logit_lens_a")
     entries_b = payload.get("_logit_lens_b")
     n_layers = len(entries_a or entries_b or [])
-    layer_labels = [str(i) for i in range(n_layers)]
 
-    def top5_text(entries: list[dict] | None) -> list[str]:
-        if entries is None:
-            return ["No LM head"] * n_layers
-        return [
-            "  |  ".join(
-                f"{t['token']}({t['prob']:.1%})" for t in layer_entries
-            )
-            for layer_entries in entries
-        ]
+    def top5_text(entries: list[dict] | None, idx: int) -> str:
+        if entries is None or idx >= len(entries):
+            return "N/A"
+        return " | ".join(
+            f"{t['token']}({t['prob']:.0%})" for t in entries[idx]
+        )
 
-    text_a = top5_text(entries_a)
-    text_b = top5_text(entries_b)
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=[1] * n_layers,
-        y=layer_labels,
-        text=text_a,
-        textposition="middle right",
-        mode="text",
-        name="Model A",
-    ))
-    fig.add_trace(go.Scatter(
-        x=[2] * n_layers,
-        y=layer_labels,
-        text=text_b,
-        textposition="middle left",
-        mode="text",
-        name="Model B",
-    ))
-    fig.update_layout(
-        title="Logit Lens — Top-5 Predicted Tokens per Layer",
-        xaxis=dict(
-            tickvals=[1, 2],
-            ticktext=["Model A", "Model B"],
-            range=[0.5, 2.5],
-        ),
-        yaxis_title="Layer",
-        height=max(300, n_layers * 24),
-        margin=dict(l=20, r=20, t=40, b=20),
-        showlegend=False,
-    )
-    return fig
+    rows: list[list[str]] = []
+    for i in range(n_layers):
+        rows.append([
+            str(i),
+            top5_text(entries_a, i),
+            top5_text(entries_b, i),
+        ])
+    return rows
 
 
 def run_pipeline(
@@ -265,7 +237,7 @@ def run_pipeline(
     l2_fig = plot_l2_magnitudes(payload)
     sparsity_fig = plot_sparsity(payload)
     heatmap_fig = plot_token_heatmap(payload, tokens_a) if is_matched else None
-    logit_fig = plot_logit_lens(payload)
+    logit_table = build_logit_lens_table(payload)
 
     warning_text = (
         "⚠️ **Dimension Mismatch Detected:** "
@@ -281,7 +253,7 @@ def run_pipeline(
         l2_fig,
         sparsity_fig,
         heatmap_fig,
-        logit_fig,
+        logit_table,
         gr.update(visible=not is_matched, value=warning_text),
         gr.update(visible=is_matched),
         gr.update(visible=is_matched),
@@ -338,7 +310,10 @@ with gr.Blocks(
                         heatmap_plot = gr.Plot(label="Token Activation Heatmap")
 
                 with gr.Tab("Logit Lens") as logit_tab:
-                    logit_plot = gr.Plot(label="Logit Lens")
+                    logit_table = gr.Dataframe(
+                        headers=["Layer", "Model A Top-5", "Model B Top-5"],
+                        datatype=["str", "str", "str"],
+                    )
 
                 with gr.Tab("Structural Integrity") as structural_tab:
                     velocity_plot = gr.Plot(label="Layer Velocity")
@@ -362,7 +337,7 @@ with gr.Blocks(
             l2_plot,
             sparsity_plot,
             heatmap_plot,
-            logit_plot,
+            logit_table,
             mismatch_banner,
             matched_column,
             heatmap_column,
