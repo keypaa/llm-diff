@@ -105,3 +105,11 @@ def load_model_pair(
     raise ValueError(
         "Invalid configuration. Provide either an adapter path OR a second model path."
     )
+
+
+def get_lm_head(model):
+    if hasattr(model, "lm_head"):
+        return model.lm_head
+    if hasattr(model, "get_output_embeddings") and model.get_output_embeddings() is not None:
+        return model.get_output_embeddings()
+    return None

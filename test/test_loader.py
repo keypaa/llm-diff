@@ -1,4 +1,5 @@
-from models.loader import ModelExecutionPlan, get_quantization_config
+import torch
+from models.loader import ModelExecutionPlan, get_lm_head, get_quantization_config
 
 
 def test_model_execution_plan_defaults():
@@ -35,3 +36,24 @@ def test_get_quantization_config_4bit():
 
 def test_get_quantization_config_unknown():
     assert get_quantization_config("unknown") is None
+
+
+class _DummyModelWithHead(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.lm_head = torch.nn.Linear(4, 10)
+
+
+class _DummyModelNoHead(torch.nn.Module):
+    pass
+
+
+def test_get_lm_head_direct():
+    model = _DummyModelWithHead()
+    head = get_lm_head(model)
+    assert head is model.lm_head
+
+
+def test_get_lm_head_none():
+    model = _DummyModelNoHead()
+    assert get_lm_head(model) is None

@@ -23,12 +23,36 @@ def _compute_velocity(
     return velocities
 
 
+def _compute_logit_lens(
+    hidden_states: tuple[torch.Tensor, ...],
+    lm_head: torch.nn.Module,
+    tokenizer,
+    top_k: int = 5,
+) -> list[list[dict]]:
+    result: list[list[dict]] = []
+    for h in hidden_states:
+        last_token = h[:, -1, :]
+        logits = lm_head(last_token)
+        probs = F.softmax(logits, dim=-1)
+        values, indices = torch.topk(probs, top_k, dim=-1)
+        layer_tokens: list[dict] = []
+        for idx, val in zip(indices.squeeze(0).tolist(), values.squeeze(0).tolist()):
+            token_str = tokenizer.decode(idx)
+            layer_tokens.append({"token": token_str, "prob": round(val, 4)})
+        result.append(layer_tokens)
+    return result
+
+
 def extract_metrics(
     hidden_a: tuple[torch.Tensor, ...],
     hidden_b: tuple[torch.Tensor, ...],
     is_matched: bool,
     hidden_dim_a: int,
     hidden_dim_b: int,
+    lm_head_a: torch.nn.Module | None = None,
+    lm_head_b: torch.nn.Module | None = None,
+    tokenizer_a=None,
+    tokenizer_b=None,
 ) -> dict[str, dict]:
     n_layers = len(hidden_a)
     velocity_a = _compute_velocity(hidden_a)
@@ -67,5 +91,10 @@ def extract_metrics(
 
     if is_matched:
         payload["_per_token_cosine"] = per_token_cosine
+
+    if lm_head_a is not None and tokenizer_a is not None:
+        payload["_logit_lens_a"] = _compute_logit_lens(hidden_a, lm_head_a, tokenizer_a)
+    if lm_head_b is not None and tokenizer_b is not None:
+        payload["_logit_lens_b"] = _compute_logit_lens(hidden_b, lm_head_b, tokenizer_b)
 
     return payload

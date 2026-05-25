@@ -106,4 +106,37 @@ def test_extract_metrics_payload_structure():
     assert "_per_token_cosine" in payload
     assert len(payload["_per_token_cosine"]) == 2
     assert len(payload["_per_token_cosine"][0]) == 3
-    assert len(payload) == 3
+    assert len(payload) == 3  # 2 layer keys + 1 meta key
+
+
+class _DummyTokenizer:
+    def decode(self, ids):
+        return f"tok_{ids}"
+
+
+def test_extract_metrics_logit_lens():
+    hidden = (torch.randn(1, 2, 4), torch.randn(1, 2, 4))
+    lm_head = torch.nn.Linear(4, 10)
+    tokenizer = _DummyTokenizer()
+    payload = extract_metrics(
+        hidden, hidden, is_matched=True,
+        hidden_dim_a=4, hidden_dim_b=4,
+        lm_head_a=lm_head, lm_head_b=lm_head,
+        tokenizer_a=tokenizer, tokenizer_b=tokenizer,
+    )
+    assert "_logit_lens_a" in payload
+    assert "_logit_lens_b" in payload
+    assert len(payload["_logit_lens_a"]) == 2
+    assert len(payload["_logit_lens_a"][0]) == 5
+    assert "token" in payload["_logit_lens_a"][0][0]
+    assert "prob" in payload["_logit_lens_a"][0][0]
+
+
+def test_extract_metrics_logit_lens_skipped():
+    hidden = (torch.randn(1, 2, 4),)
+    payload = extract_metrics(
+        hidden, hidden, is_matched=True,
+        hidden_dim_a=4, hidden_dim_b=4,
+    )
+    assert "_logit_lens_a" not in payload
+    assert "_logit_lens_b" not in payload
