@@ -110,8 +110,8 @@ def test_extract_metrics_payload_structure():
 
 
 class _DummyTokenizer:
-    def convert_ids_to_tokens(self, ids):
-        return f"tok_{ids}"
+    def decode(self, ids, skip_special_tokens=False):
+        return f"tok_{ids[0]}" if ids else ""
 
 
 def test_extract_metrics_logit_lens():
