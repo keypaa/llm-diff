@@ -105,6 +105,11 @@ def plot_token_heatmap(payload: dict, tokens: list[str]) -> go.Figure | None:
     matrix = payload["_per_token_cosine"]
     n_layers = len(matrix)
     n_tokens = len(matrix[0]) if matrix else 0
+    flat = [v for row in matrix for v in row]
+    zmin = min(flat) if flat else -1
+    zmax = max(flat) if flat else 1
+    if zmax - zmin < 0.01:
+        zmin, zmax = zmin - 0.05, zmax + 0.05
     layer_labels = [str(i) for i in range(n_layers)]
     dtick = max(1, n_tokens // 20)
     fig = go.Figure(data=go.Heatmap(
@@ -112,8 +117,8 @@ def plot_token_heatmap(payload: dict, tokens: list[str]) -> go.Figure | None:
         x=tokens,
         y=layer_labels,
         colorscale="RdBu_r",
-        zmin=-1,
-        zmax=1,
+        zmin=zmin,
+        zmax=zmax,
         hovertemplate="Token: %{x}<br>Layer: %{y}<br>Cosine: %{z:.4f}<extra></extra>",
     ))
     fig.update_layout(
